@@ -103,7 +103,7 @@ func parseArtist(raw json.RawMessage) string {
 		return strings.Join(names, "/")
 	}
 
-	var mixed []interface{}
+	var mixed []any
 	if err := json.Unmarshal(raw, &mixed); err == nil {
 		var names []string
 		for _, v := range mixed {
@@ -117,7 +117,7 @@ func parseArtist(raw json.RawMessage) string {
 		return strings.Join(names, "/")
 	}
 
-	var single interface{}
+	var single any
 	if err := json.Unmarshal(raw, &single); err == nil {
 		switch val := single.(type) {
 		case string:
@@ -269,7 +269,7 @@ func convertNcmFile(inputPath, outputDir string) (format string, err error) {
 		keyBox[i] = byte(i)
 	}
 	c, lastByte, keyOffset := byte(0), byte(0), 0
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		c = keyBox[i] + lastByte + keyData[keyOffset]
 		keyOffset = (keyOffset + 1) % len(keyData)
 		keyBox[i], keyBox[c] = keyBox[c], keyBox[i]
@@ -324,7 +324,7 @@ func convertNcmFile(inputPath, outputDir string) (format string, err error) {
 		if err != nil {
 			return "", fmt.Errorf("read audio: %w", err)
 		}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			j := byte(i + 1)
 			chunk[i] ^= keyBox[(keyBox[j]+keyBox[(keyBox[j]+j)&0xff])&0xff]
 		}

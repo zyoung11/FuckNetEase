@@ -48,7 +48,7 @@ func initAPIConfig(concurrent, delayMin, delayMax int) {
 func apiRequestDelay() {
 	// Acquire rate limit slot
 	apiLimiter <- struct{}{}
-	
+
 	// Random delay
 	delay := apiConfig.delayMin
 	if apiConfig.delayMax > apiConfig.delayMin {
@@ -85,9 +85,9 @@ type memoryBasicInformation struct {
 
 // MusicexInfo holds metadata extracted from a musicex footer
 type MusicexInfo struct {
-	SongID    uint32
-	MediaMid  string
-	Filename  string
+	SongID   uint32
+	MediaMid string
+	Filename string
 }
 
 // parseMusicexFooter parses the musicex footer from file data
@@ -148,10 +148,7 @@ func parseMusicexFooter(data []byte) (*MusicexInfo, error) {
 
 // readUTF16LEString reads a null-terminated UTF-16LE string from a byte slice
 func readUTF16LEString(data []byte, offset, maxLen int) string {
-	end := offset + maxLen
-	if end > len(data) {
-		end = len(data)
-	}
+	end := min(offset+maxLen, len(data))
 
 	var chars []uint16
 	for i := offset; i+1 < end; i += 2 {
@@ -211,8 +208,8 @@ func readUINFromConfig() (string, error) {
 		return "", fmt.Errorf("read config file: %w", err)
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(data), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(strings.ToUpper(line), "UIN=") {
 			uin := strings.TrimSpace(line[4:])
@@ -459,16 +456,16 @@ type MusicuRequest struct {
 }
 
 type MusicuComm struct {
-	Authst      string `json:"authst"`
-	Ct          string `json:"ct"`
-	Cv          string `json:"cv"`
-	Uin         string `json:"uin"`
+	Authst       string `json:"authst"`
+	Ct           string `json:"ct"`
+	Cv           string `json:"cv"`
+	Uin          string `json:"uin"`
 	TmeLoginType string `json:"tmeLoginType"`
 }
 
 type MusicuReq struct {
-	Module string     `json:"module"`
-	Method string     `json:"method"`
+	Module string      `json:"module"`
+	Method string      `json:"method"`
 	Param  MusicuParam `json:"param"`
 }
 
@@ -489,8 +486,8 @@ type MusicuResponse struct {
 }
 
 type MusicuReqResponse struct {
-	Code *int64       `json:"code"`
-	Data *MusicuData  `json:"data"`
+	Code *int64      `json:"code"`
+	Data *MusicuData `json:"data"`
 }
 
 type MusicuData struct {
@@ -595,15 +592,15 @@ func fetchAlbumCover(songMid string) ([]byte, error) {
 	apiRequestDelay()
 	defer apiRequestDone()
 	// First get song details to find album_mid
-	requestBody := map[string]interface{}{
-		"comm": map[string]interface{}{
+	requestBody := map[string]any{
+		"comm": map[string]any{
 			"ct": 19,
 			"cv": 1859,
 		},
-		"songinfo": map[string]interface{}{
+		"songinfo": map[string]any{
 			"method": "get_song_detail_yqq",
 			"module": "music.pf_song_detail_svr",
-			"param": map[string]interface{}{
+			"param": map[string]any{
 				"song_mid":  songMid,
 				"song_type": 0,
 			},
@@ -631,7 +628,7 @@ func fetchAlbumCover(songMid string) ([]byte, error) {
 	defer resp.Body.Close()
 
 	var result struct {
-		Code int `json:"code"`
+		Code     int `json:"code"`
 		Songinfo struct {
 			Code int `json:"code"`
 			Data struct {
@@ -705,21 +702,21 @@ func teaDecryptECB(in []byte, key []byte, out []byte) {
 	// Read as big-endian (network byte order)
 	y := binary.BigEndian.Uint32(in[0:4])
 	z := binary.BigEndian.Uint32(in[4:8])
-	
+
 	k := make([]uint32, 4)
-	for i := 0; i < 4; i++ {
-		k[i] = binary.BigEndian.Uint32(key[i*4:(i+1)*4])
+	for i := range 4 {
+		k[i] = binary.BigEndian.Uint32(key[i*4 : (i+1)*4])
 	}
-	
+
 	delta := uint32(0x9E3779B9)
 	sum := delta * 16
-	
-	for i := 0; i < 16; i++ {
+
+	for range 16 {
 		z -= ((y << 4) + k[2]) ^ (y + sum) ^ ((y >> 5) + k[3])
 		y -= ((z << 4) + k[0]) ^ (z + sum) ^ ((z >> 5) + k[1])
 		sum -= delta
 	}
-	
+
 	// Write as big-endian
 	binary.BigEndian.PutUint32(out[0:4], y)
 	binary.BigEndian.PutUint32(out[4:8], z)
@@ -744,28 +741,28 @@ func tcTeaDecrypt(data, key []byte) ([]byte, error) {
 	// Decrypt first block
 	destBuf := make([]byte, 8)
 	teaDecryptECB(data[0:8], key, destBuf)
-	
+
 	nPadLen := int(destBuf[0] & 0x07)
-	
+
 	// Calculate plaintext length
 	nPlainLen := len(data) - 1 - nPadLen - saltLen - zeroLen
 	if nPlainLen < 0 {
 		return nil, fmt.Errorf("invalid TC-TEA padding")
 	}
-	
+
 	// Initialize IVs
 	zeroBuf := make([]byte, 8)
 	ivPreCrypt := zeroBuf
 	ivCurCrypt := data[0:8]
-	
+
 	// Skip first block
 	pInBuf := data[8:]
 	nBufPos := 8
 	destI := 1 // Skip PadLen byte
-	
+
 	// Skip padding
 	destI += nPadLen
-	
+
 	// Skip salt
 	for i := 1; i <= saltLen; {
 		if destI < 8 {
@@ -776,23 +773,23 @@ func tcTeaDecrypt(data, key []byte) ([]byte, error) {
 			if len(pInBuf) < 8 {
 				return nil, fmt.Errorf("invalid TC-TEA data")
 			}
-			
+
 			ivPreCrypt = ivCurCrypt
 			ivCurCrypt = pInBuf[0:8]
-			
+
 			// XOR with previous ciphertext
-			for j := 0; j < 8; j++ {
+			for j := range 8 {
 				destBuf[j] ^= pInBuf[j]
 			}
-			
+
 			teaDecryptECB(destBuf, key, destBuf)
-			
+
 			pInBuf = pInBuf[8:]
 			nBufPos += 8
 			destI = 0
 		}
 	}
-	
+
 	// Extract plaintext
 	result := make([]byte, 0, nPlainLen)
 	for nPlainLen > 0 {
@@ -804,22 +801,22 @@ func tcTeaDecrypt(data, key []byte) ([]byte, error) {
 			if len(pInBuf) < 8 {
 				return nil, fmt.Errorf("invalid TC-TEA data")
 			}
-			
+
 			ivPreCrypt = ivCurCrypt
 			ivCurCrypt = pInBuf[0:8]
-			
-			for j := 0; j < 8; j++ {
+
+			for j := range 8 {
 				destBuf[j] ^= pInBuf[j]
 			}
-			
+
 			teaDecryptECB(destBuf, key, destBuf)
-			
+
 			pInBuf = pInBuf[8:]
 			nBufPos += 8
 			destI = 0
 		}
 	}
-	
+
 	// Verify zero padding
 	for i := 1; i <= zeroLen; {
 		if destI < 8 {
@@ -832,22 +829,22 @@ func tcTeaDecrypt(data, key []byte) ([]byte, error) {
 			if len(pInBuf) < 8 {
 				break
 			}
-			
+
 			ivPreCrypt = ivCurCrypt
 			ivCurCrypt = pInBuf[0:8]
-			
-			for j := 0; j < 8; j++ {
+
+			for j := range 8 {
 				destBuf[j] ^= pInBuf[j]
 			}
-			
+
 			teaDecryptECB(destBuf, key, destBuf)
-			
+
 			pInBuf = pInBuf[8:]
 			nBufPos += 8
 			destI = 0
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -962,7 +959,7 @@ func newQmc2Rc4Crypto(rc4Key []byte) *qmc2Rc4Crypto {
 
 	// KSA (Key Scheduling Algorithm)
 	j := 0
-	for i := 0; i < n; i++ {
+	for i := range n {
 		j = (j + int(s[i]) + int(rc4Key[i])) % n
 		s[i], s[j] = s[j], s[i]
 	}
