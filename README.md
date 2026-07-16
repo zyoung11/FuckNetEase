@@ -23,6 +23,25 @@ FNE 是一个可以批量将网易云音乐的 NCM 加密格式转换为 FLAC/MP
 
 4. 等待转换完成
 
+## 配置文件
+
+可以在程序同目录下创建 `config.json` 文件预设输入和输出文件夹路径，避免每次手动选择：
+
+```json
+{
+  "inputFolder": "C:/CloudMusic/VipSongsDownload",
+  "outputFolder": "D:/Music/Converted"
+}
+```
+
+- `inputFolder`：NCM 文件所在文件夹路径（必须存在）
+- `outputFolder`：输出文件夹路径（不存在时会自动创建）
+
+两个字段均可选：
+- 都不配置：每次弹窗选择
+- 只配置一个：另一个弹窗选择
+- 都配置：直接开始转换
+
 ## 本地编译
 
 ```bash

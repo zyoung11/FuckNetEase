@@ -33,3 +33,4 @@ go.work.sum
 FNE_with_FFmpeg.exe
 TEST
 FNE.exe
+config.json

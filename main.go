@@ -33,6 +33,37 @@ type ncmMetadata struct {
 	Format    string          `json:"format"`
 }
 
+type appConfig struct {
+	InputFolder  string `json:"inputFolder"`
+	OutputFolder string `json:"outputFolder"`
+}
+
+func loadConfig() (*appConfig, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("get executable path: %w", err)
+	}
+	exeDir := filepath.Dir(exePath)
+	configPath := filepath.Join(exeDir, "config.json")
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("read config file: %w", err)
+	}
+
+	var config appConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("parse config file: %w", err)
+	}
+
+	return &config, nil
+}
+
+func validateDirectory(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 type ecb struct {
 	b         cipher.Block
 	blockSize int
@@ -388,15 +419,42 @@ func buildExistingFileSet(dir string) map[string]struct{} {
 }
 
 func main() {
-	inputFolder, err := winfilepicker.SelectFolder("选择VipSongsDownload路径，默认路径：C:/CloudMusic/VipSongsDownload")
-	if err != nil || inputFolder == "" {
-		fmt.Println("Input folder selection cancelled:", err)
-		os.Exit(0)
+	var inputFolder, outputFolder string
+
+	config, err := loadConfig()
+	if err != nil {
+		fmt.Printf("Config file not found or invalid: %v\n", err)
+	} else {
+		if config.InputFolder != "" {
+			if validateDirectory(config.InputFolder) {
+				inputFolder = config.InputFolder
+				fmt.Printf("Using input folder from config: %s\n", inputFolder)
+			} else {
+				fmt.Printf("Configured input folder does not exist: %s\n", config.InputFolder)
+			}
+		}
+		if config.OutputFolder != "" {
+			outputFolder = config.OutputFolder
+			fmt.Printf("Using output folder from config: %s\n", outputFolder)
+		}
 	}
-	outputFolder, err := winfilepicker.SelectFolder("选择保存文件夹路径")
-	if err != nil || outputFolder == "" {
-		fmt.Println("Output folder selection cancelled:", err)
-		os.Exit(0)
+
+	if inputFolder == "" {
+		selected, err := winfilepicker.SelectFolder("选择VipSongsDownload路径，默认路径：C:/CloudMusic/VipSongsDownload")
+		if err != nil || selected == "" {
+			fmt.Println("Input folder selection cancelled:", err)
+			os.Exit(0)
+		}
+		inputFolder = selected
+	}
+
+	if outputFolder == "" {
+		selected, err := winfilepicker.SelectFolder("选择保存文件夹路径")
+		if err != nil || selected == "" {
+			fmt.Println("Output folder selection cancelled:", err)
+			os.Exit(0)
+		}
+		outputFolder = selected
 	}
 
 	if _, err := os.Stat(inputFolder); os.IsNotExist(err) {
