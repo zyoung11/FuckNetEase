@@ -62,6 +62,12 @@ func apiRequestDone() {
 	<-apiLimiter
 }
 
+// albumCoverCache caches album cover data by album_mid
+var albumCoverCache = make(map[string][]byte)
+
+// albumMidCache caches album_mid by song_mid
+var albumMidCache = make(map[string]string)
+
 var (
 	procVirtualQueryEx    = syscall.NewLazyDLL("kernel32.dll").NewProc("VirtualQueryEx")
 	procReadProcessMemory = syscall.NewLazyDLL("kernel32.dll").NewProc("ReadProcessMemory")
@@ -589,8 +595,16 @@ func fetchEkeyFromAPI(creds *QQMusicCredentials, filename, songmid string) (stri
 
 // fetchAlbumCover fetches the album cover image for a song
 func fetchAlbumCover(songMid string) ([]byte, error) {
-	apiRequestDelay()
-	defer apiRequestDone()
+	// Check album_mid cache first
+	albumMid, cached := albumMidCache[songMid]
+	if cached {
+		if cover, ok := albumCoverCache[albumMid]; ok {
+			return cover, nil
+		}
+		// album_mid cached but cover not yet downloaded
+		return downloadAndCache(albumMid)
+	}
+
 	// First get song details to find album_mid
 	requestBody := map[string]any{
 		"comm": map[string]any{
@@ -649,25 +663,39 @@ func fetchAlbumCover(songMid string) ([]byte, error) {
 		return nil, fmt.Errorf("album_mid not found")
 	}
 
-	albumMid := result.Songinfo.Data.TrackInfo.Album.Mid
+	albumMid = result.Songinfo.Data.TrackInfo.Album.Mid
+
+	// Cache album_mid
+	albumMidCache[songMid] = albumMid
+
+	return downloadAndCache(albumMid)
+}
+
+// downloadAndCache downloads album cover and caches it
+func downloadAndCache(albumMid string) ([]byte, error) {
+	// Check cover cache
+	if cached, ok := albumCoverCache[albumMid]; ok {
+		return cached, nil
+	}
 
 	// Download cover image (800x800 for high quality)
 	coverURL := fmt.Sprintf("https://y.gtimg.cn/music/photo_new/T002R800x800M000%s.jpg", albumMid)
-	resp2, err := http.Get(coverURL)
+	resp, err := http.Get(coverURL)
 	if err != nil {
 		return nil, fmt.Errorf("download cover: %w", err)
 	}
-	defer resp2.Body.Close()
+	defer resp.Body.Close()
 
-	if resp2.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download cover failed: HTTP %d", resp2.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download cover failed: HTTP %d", resp.StatusCode)
 	}
 
-	coverData, err := io.ReadAll(resp2.Body)
+	coverData, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read cover: %w", err)
 	}
 
+	albumCoverCache[albumMid] = coverData
 	return coverData, nil
 }
 
